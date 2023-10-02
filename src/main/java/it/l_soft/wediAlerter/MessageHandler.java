@@ -116,7 +116,7 @@ public class MessageHandler {
 					.flowControl(FlowControl.NONE)
 					.id("gsmBord")
 					.provider("raspberrypi-serial")
-					.device("/dev/merda" + ttyDev)
+					.device("/dev/" + ttyDev)
 					.build());
         serial.open();
 
