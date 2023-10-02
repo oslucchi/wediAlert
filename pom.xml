@@ -3,6 +3,10 @@
 	<groupId>wediAlerter</groupId>
 	<artifactId>wediAlerter</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
+	<properties>
+        <pi4j.version>2.0</pi4j.version>
+        <slf4j.version>1.7.32</slf4j.version>
+	</properties>
 	<build>
 		<sourceDirectory>src</sourceDirectory>
 		<plugins>
@@ -26,7 +30,7 @@
 			                <archive>
 			                <manifest>
 			                    <mainClass>
-			                        com.baeldung.executable.ExecutableMavenJar
+			                        main.java.it.l_soft.wediAlerter.WediAlerter
 			                    </mainClass>
 			                </manifest>
 			                </archive>
@@ -75,10 +79,64 @@
 		</plugins>
 	</build>
 	<dependencies>
+<!-- 
 		<dependency>
 		    <groupId>com.pi4j</groupId>
 		    <artifactId>pi4j-core</artifactId>
-		    <version>2.3.0</version>
+		    <version>${pi4j.version}</version>
 		</dependency>
+		<dependency>
+		    <groupId>com.pi4j</groupId>
+		    <artifactId>pi4j-plugin-raspberrypi</artifactId>
+		    <version>${pi4j.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.pi4j</groupId>
+		    <artifactId>pi4j-plugin-pigpio</artifactId>
+		    <version>${pi4j.version}</version>
+		</dependency>
+-->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+        
+        <dependency>
+            <groupId>com.pi4j</groupId>
+            <artifactId>pi4j-core</artifactId>
+            <version>${pi4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.pi4j</groupId>
+            <artifactId>pi4j-plugin-raspberrypi</artifactId>
+            <version>${pi4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.pi4j</groupId>
+            <artifactId>pi4j-plugin-pigpio</artifactId>
+            <version>${pi4j.version}</version>
+        </dependency>
+
+<!-- 
+	
+		<dependency>
+			<groupId>log4j</groupId>
+			<artifactId>log4j</artifactId>
+			<version>1.2.17</version>
+		</dependency>
+
+		<dependency>
+		    <groupId>org.slf4j</groupId>
+		    <artifactId>slf4j-log4j12</artifactId>
+		    <version>2.0.0-alpha0</version>
+		    <scope>runtime</scope>
+		</dependency>
+-->
 	</dependencies>
 </project>
