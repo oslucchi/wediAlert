@@ -4,7 +4,7 @@
 	<artifactId>wediAlerter</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<properties>
-        <pi4j.version>2.0</pi4j.version>
+        <pi4j.version>1.4</pi4j.version>
         <slf4j.version>1.7.32</slf4j.version>
 	</properties>
 	<build>
@@ -112,6 +112,7 @@
             <artifactId>pi4j-core</artifactId>
             <version>${pi4j.version}</version>
         </dependency>
+<!-- 
         <dependency>
             <groupId>com.pi4j</groupId>
             <artifactId>pi4j-plugin-raspberrypi</artifactId>
@@ -122,6 +123,7 @@
             <artifactId>pi4j-plugin-pigpio</artifactId>
             <version>${pi4j.version}</version>
         </dependency>
+-->
 
 <!-- 
 	

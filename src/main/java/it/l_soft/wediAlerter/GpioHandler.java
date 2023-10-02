@@ -1,9 +1,9 @@
 package main.java.it.l_soft.wediAlerter;
 
-import com.pi4j.context.Context;
-import com.pi4j.io.gpio.digital.DigitalInput;
-import com.pi4j.io.gpio.digital.DigitalInputProvider;
-import com.pi4j.io.gpio.digital.PullResistance;
+import com.pi4j.io.gpio.GpioController;
+import com.pi4j.io.gpio.GpioFactory;
+import com.pi4j.io.gpio.GpioPinDigitalInput;
+import com.pi4j.io.gpio.RaspiPin;
 import com.pi4j.util.Console;
 
 public class GpioHandler extends Thread  {
@@ -11,17 +11,17 @@ public class GpioHandler extends Thread  {
 	public static final int ALARM_INPUT_PIN = 31;
 	private static final int IO_WAIT_READ_TIME = 200;
 
-	Context pi4j;
 	boolean shutdown = false;
 	Console console;
-	DigitalInput pinAlarm;
-	DigitalInput pinAlert;
+	GpioPinDigitalInput pinAlarm;
+	GpioPinDigitalInput pinAlert;
 	int alertDownSince = 0;
 	int alarmDownSince = 0;
+	MessageHandler mh;
 	
-	public GpioHandler(Context pi4j, MessageHandler mh, Console console)  
+	public GpioHandler(MessageHandler mh, Console console)  
 	{
-		this.pi4j = pi4j;
+		this.mh = mh;
 		this.console = console;
 	}
 
@@ -36,26 +36,12 @@ public class GpioHandler extends Thread  {
 	
 	private void setUp()
 	{	
-        // get a Digital Input I/O provider from the Pi4J context
-        DigitalInputProvider digitalInputProvider = pi4j.provider("pigpio-digital-input");
-
-        // create a digital input instance using the default digital input provider
-        // we will use the PULL_DOWN argument to set the pin pull-down resistance on this GPIO pin
-        var pinConfig = DigitalInput.newConfigBuilder(pi4j)
-                .id("FirePrevAlert")
-                .address(ALERT_INPUT_PIN)
-                .pull(PullResistance.PULL_DOWN)
-                .provider("raspberrypi-digital-input")
-                .build();
-        pinAlert  = digitalInputProvider.create(pinConfig);
-
-        pinConfig = DigitalInput.newConfigBuilder(pi4j)
-                .id("FirePrevAlarm")
-                .address(ALARM_INPUT_PIN)
-                .pull(PullResistance.PULL_DOWN)
-                .provider("raspberrypi-digital-input")
-                .build();
-        pinAlarm = digitalInputProvider.create(pinConfig);
+        final GpioController gpio = GpioFactory.getInstance();
+        
+        // provision gpio pin #01 as an output pin and turn on
+        pinAlarm = gpio.provisionDigitalInputPin(RaspiPin.GPIO_21, "alarm");
+ 
+        pinAlert = gpio.provisionDigitalInputPin(RaspiPin.GPIO_22, "alert");
 	}
 	
 	private void loop()

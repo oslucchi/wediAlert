@@ -1,13 +1,13 @@
 package main.java.it.l_soft.wediAlerter;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.pi4j.context.Context;
-
+import com.pi4j.io.gpio.exception.UnsupportedBoardType;
 import com.pi4j.io.serial.*;
 
 //import com.pi4j.io.serial.FlowControl;
@@ -24,26 +24,41 @@ public class MessageHandler {
 	String msgOut = "";
 	boolean newMsgIn = false;
 	Console console;
-	Serial serial;
 	SerialReader serialReader;
 	Thread serialReaderThread;
-	Context pi4j;
+	final Serial serial = SerialFactory.createInstance();
+    SerialConfig config;
 	String simPin = "9234";
 	String ttyDev;
 	
-	public MessageHandler(Context pi4j, Console console, String ttyDev)
+	public MessageHandler(Console console, String ttyDev)
 	{
-		this.pi4j = pi4j;
 		this.console = console;
 		this.ttyDev = ttyDev;
-
-// Let's print out to the console the detected and loaded
-// providers that Pi4J detected when it was initialized.
-//        Providers providers = pi4j.providers();
-//        console.box("Pi4J PROVIDERS");
-//        console.println();
-//        providers.describe().print(System.out);
-//        console.println();
+		
+	    config = new SerialConfig();
+        try {
+        	log.trace("Trying to open '" + SerialPort.getDefaultPort() + "'");
+			config.device(SerialPort.getDefaultPort())
+			      .baud(Baud._115200)
+			      .dataBits(DataBits._8)
+			      .parity(Parity.NONE)
+			      .stopBits(StopBits._1)
+			      .flowControl(FlowControl.NONE);
+		} 
+        catch (UnsupportedBoardType | IOException | InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	private void waitForMS(long ms)
+	{
+		try {
+			Thread.sleep(250);
+		} catch (InterruptedException e) {
+			;
+		}
 	}
 	
 	void testMsgsFromLineInput()
@@ -73,109 +88,55 @@ public class MessageHandler {
 		}
 	}
 	
-	void closePort()
+	void closePort() throws IllegalStateException, IOException
 	{
 		serialReader.stopReading();
 		serial.close();;
 	}
 	
-	void closePortAndExit(String errMsg, int errCOde)
+	void closePortAndExit(String errMsg, int errCOde) throws IllegalStateException, IOException
 	{
 		closePort();
 		System.out.println(errMsg);
-		try {
-			Thread.sleep(500);
-		} catch (InterruptedException e) {
-			;
-		}
+		waitForMS(250);
 		System.exit(errCOde);
 	}
 
-	void openPort() throws InterruptedException
+	void openPort() throws InterruptedException, IOException
 	{
-		log.trace("building serial on /dev/" + ttyDev);
-		
-//		serial = pi4j.create(Serial.newConfigBuilder(pi4j)
-//		        .use_38400_N81()
-//		        .dataBits_8()
-//		        .parity(Parity.NONE)
-//		        .stopBits(StopBits._1)
-//		        .flowControl(FlowControl.NONE)
-////		        .id("my-serial")
-//		        .device("/dev/" + ttyDev)
-//		        .provider("raspberrypi-serial")
-//		        .build());
-//		log.trace("serial built. " + serial.available() + " " + serial.getDescription());
-//		serial.open();
-
-        serial = pi4j.create(Serial.newConfigBuilder(pi4j)
-					.baud(115200)
-					.dataBits_8()
-					.parity(Parity.NONE)
-					.stopBits(StopBits._1)
-					.flowControl(FlowControl.NONE)
-					.id("gsmBord")
-					.provider("raspberrypi-serial")
-					.device("/dev/" + ttyDev)
-					.build());
-        serial.open();
-
-
-		
-		
-		
-		
-		// Wait till the serial port is open
-		console.print("Waiting till serial port is open");
-		while (!serial.isOpen()) {
-		    Thread.sleep(1000);
-		    log.debug("serial is " + (serial.isOpen() ? "" : "not ") + "opened");
-		}
+		log.trace("Opening configured serial");
+        serial.open(config);
+        
+        serial.addListener(new SerialDataEventListener() {
+            @Override
+            public void dataReceived(SerialDataEvent event) {
+ 
+                // NOTE! - It is extremely important to read the data received from the
+                // serial port.  If it does not get read from the receive buffer, the
+                // buffer will continue to grow and consume memory.
+ 
+                // print out the data received to the console
+                try {
+                    console.println("[HEX DATA]   " + event.getHexByteString());
+                    console.println("[ASCII DATA] " + event.getAsciiString());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
+        
+ 
+    }
 	
-		// Start a thread to handle the incoming data from the serial port
-		serialReader = new SerialReader(console, serial);
-		serialReaderThread = new Thread(serialReader, "SerialReader");
-		serialReaderThread.setDaemon(true);
-		serialReaderThread.start();
-		
-		if (simPin.compareTo("") == 0)
-		{
-			sendMsg(("AT+CPIN='" + simPin + "'").getBytes(), true, null);
-			if (!newMsgIn || msgIn.compareTo("OK") != 0)
-			{
-				closePortAndExit("The required PIN " + simPin + " has not been accepted", -1);
-			}
-		}
-		// wait for the CPIN READY to appear
-		while(!newMsgIn)
-		{
-			try {
-				Thread.sleep(250);
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
-		newMsgIn = false;
-		if (!msgIn.contains("READY"))
-		{
-			closePortAndExit("The sim could not be registered (" + msgIn + ")", -1);
-		}
-		
-	}
-	
-	public String sendMsg(byte[] message, boolean waitForAnswer, String expectedAnswer)
+	public String sendMsg(byte[] message, boolean waitForAnswer, String expectedAnswer) throws IllegalStateException, IOException
 	{
 		String receivedMsg = null;
+        log.trace("Sending '" + new String(message) + "'");
 		serial.write(message);
+		serial.write("\r");
 		while(waitForAnswer && !newMsgIn)
 		{
-			try {
-				Thread.sleep(250);
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
+			waitForMS(250);
 		}
 		receivedMsg = msgIn;
 		newMsgIn = false;

@@ -1,17 +1,13 @@
 package main.java.it.l_soft.wediAlerter;
 
 
-import com.pi4j.Pi4J;
-import com.pi4j.context.Context;
 import com.pi4j.util.Console;
 
 public class WediAlerter {
-	static Context pi4j;
 	static Console console;
 	public static void main(String[] args) 
 	{
 		Thread gpioThread;
-		pi4j = Pi4J.newAutoContext();
 		console = new Console();
 	    // print program title/header
         console.title("<-- wediAlert -->", "monitoring input signals");
@@ -20,7 +16,7 @@ public class WediAlerter {
         console.promptForExit();
 
 		// Create the serial port communication class
-		MessageHandler mh = new MessageHandler(pi4j, console, args[1]);
+		MessageHandler mh = new MessageHandler(console, args[1]);
 		if (args[0].toUpperCase().compareTo("TEST") == 0)
 		{
 			mh.testMsgsFromLineInput();
@@ -28,10 +24,8 @@ public class WediAlerter {
 		else
 		{
 			// start thread to handle changes in GPIO
-			gpioThread = new GpioHandler(pi4j, mh, console);
+			gpioThread = new GpioHandler(mh, console);
 			gpioThread.start();
 		}
-		
-		pi4j.shutdown();
 	}
 }
