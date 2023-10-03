@@ -38,7 +38,7 @@ public class MessageHandler {
 		
 	    config = new SerialConfig();
         try {
-        	log.trace("Trying to open '" + SerialPort.getDefaultPort() + "'");
+        	log.trace("Configuring device '" + SerialPort.getDefaultPort() + "' for communications");
 			config.device(SerialPort.getDefaultPort())
 			      .baud(Baud._115200)
 			      .dataBits(DataBits._8)
@@ -73,12 +73,20 @@ public class MessageHandler {
 			log.trace("Port Openend");
             br = new BufferedReader(new InputStreamReader(System.in));
 			log.trace("BufferedReader created");
+			console.clearScreen();
 			while(true)
 			{
+				console.print("/> ");
 	            if ((lineIn = br.readLine()).compareTo("") == 0)
 	            {
 	            	break;
 		        }
+	            if (lineIn.toUpperCase().substring(0,4).compareTo("QUIT") == 0)
+	            {
+	            	console.println();
+	            	closePortAndExit("goodbye", 0);
+	            	
+	            }
 	            lineIn = sendMsg(lineIn.getBytes(), true, "");
 	            log.debug("sent '" + lineIn + "' - received '" + msgIn + "'"); 
 			}
@@ -91,6 +99,7 @@ public class MessageHandler {
 	void closePort() throws IllegalStateException, IOException
 	{
 		serialReader.stopReading();
+		waitForMS(500);
 		serial.close();;
 	}
 	
@@ -107,26 +116,34 @@ public class MessageHandler {
 		log.trace("Opening configured serial");
         serial.open(config);
         
-        serial.addListener(new SerialDataEventListener() {
-            @Override
-            public void dataReceived(SerialDataEvent event) {
- 
-                // NOTE! - It is extremely important to read the data received from the
-                // serial port.  If it does not get read from the receive buffer, the
-                // buffer will continue to grow and consume memory.
- 
-                // print out the data received to the console
-                try {
-                    console.println("[HEX DATA]   " + event.getHexByteString());
-                    console.println("[ASCII DATA] " + event.getAsciiString());
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-        
- 
+//        serial.addListener(new SerialDataEventListener() {
+//            @Override
+//            public void dataReceived(SerialDataEvent event) {
+// 
+//                // NOTE! - It is extremely important to read the data received from the
+//                // serial port.  If it does not get read from the receive buffer, the
+//                // buffer will continue to grow and consume memory.
+// 
+//                // print out the data received to the console
+//                try {
+//                    console.println("[HEX DATA]   " + event.getHexByteString());
+//                    console.println("[ASCII DATA] " + event.getAsciiString());
+//                } catch (IOException e) {
+//                    e.printStackTrace();
+//                }
+//            }
+//        });
+		serialReader = new SerialReader(console, serial);
+		serialReaderThread = new Thread(serialReader, "SerialReader");
+		serialReaderThread.setDaemon(true);
+		serialReaderThread.start();
+		log.debug("Setting mode CMGF to 1 " + sendMsg("AT+CMGF=1", true, "OK"));
     }
+
+	public String sendMsg(String message, boolean waitForAnswer, String expectedAnswer) throws IllegalStateException, IOException
+	{
+		return sendMsg(message.getBytes(), waitForAnswer, expectedAnswer);
+	}
 	
 	public String sendMsg(byte[] message, boolean waitForAnswer, String expectedAnswer) throws IllegalStateException, IOException
 	{
@@ -134,6 +151,7 @@ public class MessageHandler {
         log.trace("Sending '" + new String(message) + "'");
 		serial.write(message);
 		serial.write("\r");
+
 		while(waitForAnswer && !newMsgIn)
 		{
 			waitForMS(250);

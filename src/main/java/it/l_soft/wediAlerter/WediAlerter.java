@@ -1,9 +1,15 @@
 package main.java.it.l_soft.wediAlerter;
 
 
+import java.io.IOException;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import com.pi4j.util.Console;
 
 public class WediAlerter {
+	static final Logger log = LoggerFactory.getLogger(WediAlerter.class); 
 	static Console console;
 	public static void main(String[] args) 
 	{
@@ -23,6 +29,13 @@ public class WediAlerter {
 		}
 		else
 		{
+			try {
+				mh.openPort();
+			} 
+			catch (InterruptedException | IOException e) {
+				log.error("Errore durante apertura porta comunicazione modem '" + e.getMessage() + "'", e);
+				System.exit(-1);
+			}
 			// start thread to handle changes in GPIO
 			gpioThread = new GpioHandler(mh, console);
 			gpioThread.start();
