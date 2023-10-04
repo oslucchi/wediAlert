@@ -28,38 +28,33 @@ public class GpioHandler extends Thread  {
 	GpioPinDigitalInput pinAlert;
 	int alertDownSince = 0;
 	int alarmDownSince = 0;
+	int alertUpSince = 0;
+	int alarmUpSince = 0;
 	MessageHandler mh;
 	SimpleDateFormat fmt = new SimpleDateFormat("yy/MM/dd HH:mm:ss");
+	ApplicationProperties ap;
 	
-	public GpioHandler(MessageHandler mh, Console console)  
+	public GpioHandler(MessageHandler mh, Console console, ApplicationProperties ap)  
 	{
 		this.mh = mh;
 		this.console = console;
+		this.ap = ap;		
 	}
 
-	private void waitForMS(long ms)
-	{
-		try {
-			Thread.sleep(250);
-		} catch (InterruptedException e) {
-			;
-		}
-	}
 	private void sendSMS(String msg)
 	{
-		
-		String retVal;
-		String phoneNumber = "AT+CMGS=\"+393488704431\""; 
-		try {
-			log.trace("Sending '" + phoneNumber + "'");
-			retVal = mh.sendMsg(phoneNumber + "\n", true, ">");
-			log.trace(retVal);
-			log.trace("Sending \"" + msg + "\"");
-			retVal = mh.sendMsg(msg + "\u001A", true, null);
-			log.trace(retVal);
-		}
-		catch (IllegalStateException | IOException e) {
-			log.error("Errore durante la spedizione messaggio '" + msg + "'", e);
+
+		for(String phoneNumber : ap.getContacts())
+		{
+			try {
+				log.trace("Sending to '" + phoneNumber + "'");
+				mh.sendMsg("AT+CMGS=\"" + phoneNumber + "\"\r", true, "> ", false);
+				log.trace("Info message is '" + msg + "'");
+				mh.sendMsg(msg + "\u001A", true, "OK", false);
+			}
+			catch (IllegalStateException | IOException e) {
+				log.error("Errore durante la spedizione messaggio '" + msg + "'", e);
+			}
 		}
 	}
 	
@@ -77,51 +72,65 @@ public class GpioHandler extends Thread  {
 	private void loop()
 	{
 		// Force the boolean value for testing purposes
-		boolean alert = pinAlert.isLow() && false;
-		boolean alarm = pinAlarm.isLow();
+		boolean alert = pinAlert.isLow() ;
+		boolean alarm = pinAlarm.isLow() && false;
 		
-		System.out.println("Alarm is " + pinAlarm.getState().getName() + "- Alert is " + pinAlert.getState().getName());
+		System.out.println("Alarm is " + alarm + "- Alert is " + alert);
 		if (alert)
 		{
-			alertDownSince += IO_WAIT_READ_TIME;
-			if (alertDownSince == IO_WAIT_READ_TIME * WAIT_FOR_CYCLES)
+			alertDownSince = 0 ;
+			alertUpSince += IO_WAIT_READ_TIME;
+			if (alertUpSince == IO_WAIT_READ_TIME * WAIT_FOR_CYCLES)
 			{
 				// send alert msg
-				log.debug("Alert acticve since more than "  + 
-						alertDownSince / WAIT_FOR_CYCLES / 1000  +
-						" seconds. Sending messages");
+				log.debug("Alert active since more than "  + 
+							alertUpSince / 1000  +
+							" seconds. Sending messages");
 				sendSMS("ALLERTA GUASTO IMPIANTO ANTINCENDIO. ore " + fmt.format(new Date()));
 			}
 		}
 		else
 		{
-			if (alertDownSince > 0)
+			if (alertUpSince > 0)
 			{
-				log.trace("Reset alert to normal");
-				sendSMS("RIENTRATA ALLERTA GUASTO IMPIANTO ANTINCENDIO. ore " + fmt.format(new Date()));
-				alertDownSince = 0;
+				alertDownSince += IO_WAIT_READ_TIME;
+				if (alertDownSince == IO_WAIT_READ_TIME * WAIT_FOR_CYCLES)
+				{
+					// send alert reset msg
+					log.trace("Reset alert to normal");
+					sendSMS("RIENTRATA ALLERTA GUASTO IMPIANTO ANTINCENDIO. ore " + fmt.format(new Date()));
+					alertUpSince = 0;
+				}
+
 			}
 		}
 		
 		if (alarm)
 		{
-			alarmDownSince += IO_WAIT_READ_TIME;
-			if (alarmDownSince == IO_WAIT_READ_TIME * WAIT_FOR_CYCLES)
+			alarmDownSince = 0 ;
+			alarmUpSince += IO_WAIT_READ_TIME;
+			if (alarmUpSince == IO_WAIT_READ_TIME * WAIT_FOR_CYCLES)
 			{
-				// send alarm msg
-				log.debug("Alarm acticve since more than "  + 
-						alarmDownSince / WAIT_FOR_CYCLES / 1000 +
-						" seconds. Sending messages");
+				// send alert msg
+				log.debug("Alarm active since more than "  + 
+							alarmUpSince / 1000 +
+							" seconds. Sending messages");
 				sendSMS("ALLARME IMPIANTO ANTINCENDIO. ore " + fmt.format(new Date()));
 			}
 		}
 		else
 		{
-			if (alarmDownSince > 0)
+			if (alarmUpSince > 0)
 			{
-				log.trace("Reset alarm to normal");
-				sendSMS("RIENTRATO ALLARME IMPIANTO ANTINCENDIO. ore " + fmt.format(new Date()));
-				alarmDownSince = 0;
+				alarmDownSince += IO_WAIT_READ_TIME;
+				if (alarmDownSince == IO_WAIT_READ_TIME * WAIT_FOR_CYCLES)
+				{
+					// send alert reset msg
+					log.trace("Reset alarm to normal");
+					sendSMS("RIENTRATO ALLARME IMPIANTO ANTINCENDIO. ore " + fmt.format(new Date()));
+					alarmUpSince = 0;
+				}
+
 			}
 		}
 	}
@@ -133,7 +142,7 @@ public class GpioHandler extends Thread  {
 		while(!shutdown)
 		{
 			loop();
-			waitForMS(IO_WAIT_READ_TIME);
+			mh.waitForMS(IO_WAIT_READ_TIME);
 		}
 	}	
 }
