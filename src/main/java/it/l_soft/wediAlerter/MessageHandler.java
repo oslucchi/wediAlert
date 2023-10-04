@@ -3,6 +3,8 @@ package main.java.it.l_soft.wediAlerter;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.Queue;
+import java.util.concurrent.PriorityBlockingQueue;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -150,58 +152,30 @@ public class MessageHandler {
 	
 	public String sendMsg(byte[] message, boolean waitForAnswer, String expectedReturn, boolean cleanupQueue) throws IllegalStateException, IOException
 	{
-		String receivedMsg = null;
+		String receivedMsg = "//////////";
         log.trace("pushing '" + new String(message) + "' to modem");
 		serial.write(message);
 //		serial.write("\r");
 
 		if(waitForAnswer)
 		{
-			long interrupt = 0;
 			log.trace("Required to wait for answer " + (expectedReturn != null ? "(" + expectedReturn + ")" : ""));
 			
-			
-			while(receivedMsg == null)
+			String returnCheck = expectedReturn;
+			receivedMsg = serialReader.getNextMessage(5000);
+			while((receivedMsg != null) && 
+				  !receivedMsg.toUpperCase().startsWith(returnCheck.toUpperCase()))
 			{
-				while(!newMsgIn && (interrupt < 5000))
+				receivedMsg = serialReader.getNextMessage(5000);
+				log.debug("Received '" + receivedMsg + "'" + 
+						  (expectedReturn != null ? " on expected '" + expectedReturn + "'" : ". No check required"));
+				if ((receivedMsg != null) && expectedReturn.length() > receivedMsg.length())
 				{
-					interrupt += 250;
-					waitForMS(250);
-				}
-				
-				if (newMsgIn)
-				{
-					log.debug("Received '" + msgIn + "'" + 
-							  (expectedReturn != null ? " on expected '" + expectedReturn + "'" : ". No check required"));
-					String returnCheck = expectedReturn;
-					if (expectedReturn.length() > msgIn.length())
-					{
-						returnCheck = expectedReturn.substring(0, msgIn.length());
-					}
-					if ((expectedReturn == null) || 
-						(expectedReturn.compareTo("") == 0 ) ||
-						msgIn.toUpperCase().startsWith(returnCheck.toUpperCase()))
-					{
-						receivedMsg = new String(msgIn);
-						log.debug("Received expected message");
-					}
-					else
-					{
-						log.debug("Received '" + receivedMsg + "'" + 
-								  (expectedReturn != null ? " on expected '" + expectedReturn + "'" : ""));
-						log.trace("trying to get more inpbound messages");
-					}
-					newMsgIn = false;
-					msgIn = "";
-					interrupt = 0;
-				}
-				else
-				{
-					break;
+					returnCheck = expectedReturn.substring(0, receivedMsg.length());
 				}
 			}
-			
-			if (interrupt >= 5000)
+
+			if (receivedMsg == null)
 			{
 				log.debug("wait pending msgin interrupted");				
 			}
@@ -216,6 +190,8 @@ public class MessageHandler {
 	
 	public class SerialReader implements Runnable {
 
+		Queue<String> receivedMessages = new PriorityBlockingQueue<String>();
+				
 	    private final Console console;
 	    private final Serial serial;
         // We use a buffered reader to handle the data received from the serial port
@@ -247,25 +223,35 @@ public class MessageHandler {
 			log.trace("No residual incomng data in queue");
 	    }
 	    
+	    public String getNextMessage(long maxWaitFor)
+		{
+	    	long waitingSince = 0;
+			while(waitingSince < maxWaitFor)
+			{
+				if (receivedMessages.size() > 0)
+				{
+					return receivedMessages.poll();
+				}
+				waitingSince += 100;
+				waitForMS(100);
+			}
+			return null;
+		}
+	    
 	    @Override
 	    public void run() {
 	    	br = new BufferedReader(new InputStreamReader(serial.getInputStream()));
 	        try {
-	            // Data from the GPS is received in lines
-
-	            // Read data until the flag is false
+	            String line = "";
 	            while (continueReading) {
-	                // First we need to check if there is data available to read.
-	                // The read() command for pigio-serial is a NON-BLOCKING call, 
-	                // in contrast to typical java input streams.
 	                var available = serial.available();
-	                if ((available > 0) && !newMsgIn) {
-	    	            String line = "";
+
+	                if (available > 0) 
+	                {
 	    	            boolean crPendingLF = false;
 	                	log.trace("SerialReader new message of len " + available + " pending");
-	                	for (int i = 0; (i < available) && !newMsgIn; i++) {
+	                	for (int i = 0; i < available; i++) {
 	                        byte b = (byte) br.read();
-	                        
 	                        log.trace("SerialReader Read " + b);
 	                        // Consider reading till the sequence CR+LF is in
 	                        switch(b)
@@ -279,8 +265,8 @@ public class MessageHandler {
 	                                if (!line.isEmpty()) {
 	                                    // Here we should add code to parse the data to a GPS data object
 	                                    log.trace("SerialReader received '" + line + "'");
-	                                    msgIn = line;
-	                                    newMsgIn = true;
+	                                    receivedMessages.add(line);
+		                                line = "";
 	                                }
 	                        	}
 	                        	else
@@ -304,8 +290,8 @@ public class MessageHandler {
                         if (!newMsgIn && !line.isEmpty()) {
                             // Data returned without CR+LF trailer. Likely a response to an AT+CMGS command '> '
                             log.trace("SerialReader received '" + line + "'");
-                            msgIn = line;
-                            newMsgIn = true;
+                            receivedMessages.add(line);
+                            line = "";
                         }
 	                } 
                     Thread.sleep(300);
@@ -316,5 +302,4 @@ public class MessageHandler {
 	        }
 	    }
 	}
-
 }
