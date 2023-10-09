@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import com.pi4j.io.gpio.GpioController;
 import com.pi4j.io.gpio.GpioFactory;
 import com.pi4j.io.gpio.GpioPinDigitalInput;
+import com.pi4j.io.gpio.Pin;
 import com.pi4j.io.gpio.PinPullResistance;
 import com.pi4j.io.gpio.RaspiPin;
 import com.pi4j.util.Console;
@@ -17,10 +18,10 @@ import com.pi4j.util.Console;
 public class GpioHandler extends Thread  {
 	final Logger log = LoggerFactory.getLogger(this.getClass()); 
 
-	public static final int ALERT_INPUT_PIN = 24;
-	public static final int ALARM_INPUT_PIN = 25;
+	public static final Pin ALERT_INPUT_PIN = RaspiPin.GPIO_24;
+	public static final Pin ALARM_INPUT_PIN = RaspiPin.GPIO_25;
 	private static final int IO_WAIT_READ_TIME = 500;
-	private static final int WAIT_FOR_CYCLES = 20;
+	private static final int WAIT_BEFORE_REPORT = 8;
 
 	boolean shutdown = false;
 	Console console;
@@ -64,23 +65,29 @@ public class GpioHandler extends Thread  {
 //        gpio.setMode(GPIO.BCM), null);
         
         // provision gpio pin 19 & 26 as an input pin 
-        pinAlarm = gpio.provisionDigitalInputPin(RaspiPin.GPIO_24, "alarm", PinPullResistance.PULL_DOWN);
+        pinAlarm = gpio.provisionDigitalInputPin(ALARM_INPUT_PIN, "alarm", PinPullResistance.PULL_DOWN);
  
-        pinAlert = gpio.provisionDigitalInputPin(RaspiPin.GPIO_25, "alert", PinPullResistance.PULL_DOWN);
+        pinAlert = gpio.provisionDigitalInputPin(ALERT_INPUT_PIN, "alert", PinPullResistance.PULL_DOWN);
+        System.out.println("Pin alarm set to '" + pinAlarm.getPin().getName() + "' current value " + pinAlarm.getState().getName());
+        System.out.println("Pin alert set to '" + pinAlert.getPin().getName() + "' current value " + pinAlert.getState().getName());
 	}
 	
 	private void loop()
 	{
 		// Force the boolean value for testing purposes
-		boolean alert = pinAlert.isLow() ;
-		boolean alarm = pinAlarm.isLow() && false;
+		boolean alert = pinAlert.isLow();
+		boolean alarm = pinAlarm.isLow();
 		
-		System.out.println("Alarm is " + alarm + "- Alert is " + alert);
 		if (alert)
 		{
+			if (alertUpSince == 0)
+			{
+				System.out.println("** Alert is gone UP **");
+				log.debug("** Alert is gone UP **");
+			}
 			alertDownSince = 0 ;
 			alertUpSince += IO_WAIT_READ_TIME;
-			if (alertUpSince == IO_WAIT_READ_TIME * WAIT_FOR_CYCLES)
+			if (alertUpSince == WAIT_BEFORE_REPORT * 1000)
 			{
 				// send alert msg
 				log.debug("Alert active since more than "  + 
@@ -94,8 +101,9 @@ public class GpioHandler extends Thread  {
 			if (alertUpSince > 0)
 			{
 				alertDownSince += IO_WAIT_READ_TIME;
-				if (alertDownSince == IO_WAIT_READ_TIME * WAIT_FOR_CYCLES)
+				if (alertDownSince == WAIT_BEFORE_REPORT * 1000)
 				{
+					System.out.println("** Alert is now DOWN **");
 					// send alert reset msg
 					log.trace("Reset alert to normal");
 					sendSMS("RIENTRATA ALLERTA GUASTO IMPIANTO ANTINCENDIO. ore " + fmt.format(new Date()));
@@ -107,9 +115,14 @@ public class GpioHandler extends Thread  {
 		
 		if (alarm)
 		{
+			if (alarmUpSince == 0)
+			{
+				System.out.println("** Alarm is gone UP **");
+				log.debug("** Alarm is gone UP **");
+			}
 			alarmDownSince = 0 ;
 			alarmUpSince += IO_WAIT_READ_TIME;
-			if (alarmUpSince == IO_WAIT_READ_TIME * WAIT_FOR_CYCLES)
+			if (alarmUpSince == WAIT_BEFORE_REPORT * 1000)
 			{
 				// send alert msg
 				log.debug("Alarm active since more than "  + 
@@ -123,8 +136,9 @@ public class GpioHandler extends Thread  {
 			if (alarmUpSince > 0)
 			{
 				alarmDownSince += IO_WAIT_READ_TIME;
-				if (alarmDownSince == IO_WAIT_READ_TIME * WAIT_FOR_CYCLES)
+				if (alarmDownSince == WAIT_BEFORE_REPORT * 1000)
 				{
+					System.out.println("** Alarm is now DOWN **");
 					// send alert reset msg
 					log.trace("Reset alarm to normal");
 					sendSMS("RIENTRATO ALLARME IMPIANTO ANTINCENDIO. ore " + fmt.format(new Date()));
