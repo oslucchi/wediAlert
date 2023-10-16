@@ -18,23 +18,21 @@ public class MessageHandler {
 	final Logger log = LoggerFactory.getLogger(this.getClass()); 
 	final Serial serial = SerialFactory.createInstance();
 
-	ApplicationProperties ap;
-	String msgIn = "";
-	String msgOut = "";
-	boolean newMsgIn = false;
-	Console console;
+	private String msgIn = "";
+	private boolean newMsgIn = false;
+	private Console console;
+	boolean portOpened = false;
 	
-	SerialReader serialReader;
-	Thread serialReaderThread;
+	private SerialReader serialReader;
+	private Thread serialReaderThread;
     
-	SerialConfig config;
-	String ttyDev;
+	private SerialConfig config;
+	private String ttyDev;
 	
 	public MessageHandler(Console console, String ttyDev, ApplicationProperties ap)
 	{
 		this.console = console;
 		this.ttyDev = "/dev/" + ttyDev;
-		this.ap = ap;
 		
 	    config = new SerialConfig();
         try {
@@ -143,6 +141,7 @@ public class MessageHandler {
 		log.debug("Setting mode CMGF to 1");
 		sendMsg("AT+CMGF=1\r", true, "OK", false);
 		log.trace("Communication port opened and successfully set");
+		portOpened = true;
     }
 
 	public String sendMsg(String message, boolean waitForAnswer, String expectedReturn, boolean cleanupQueue) throws IllegalStateException, IOException
@@ -155,7 +154,6 @@ public class MessageHandler {
 		String receivedMsg = "//////////";
         log.trace("pushing '" + new String(message) + "' to modem");
 		serial.write(message);
-//		serial.write("\r");
 
 		if(waitForAnswer)
 		{
@@ -301,5 +299,10 @@ public class MessageHandler {
 	            System.out.println(e.getStackTrace());
 	        }
 	    }
+	}
+	
+	public boolean isPortOpened()
+	{
+		return portOpened;
 	}
 }

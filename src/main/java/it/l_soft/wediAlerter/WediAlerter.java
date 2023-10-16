@@ -2,6 +2,7 @@ package main.java.it.l_soft.wediAlerter;
 
 
 import java.io.IOException;
+import java.text.ParseException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,20 +12,17 @@ import com.pi4j.util.Console;
 public class WediAlerter {
 	static final Logger log = LoggerFactory.getLogger(WediAlerter.class); 
 	static Console console;
-	public static void main(String[] args) 
+	public static void main(String[] args) throws InterruptedException, IOException, ParseException 
 	{
-		Thread gpioThread;
+		GpioHandler gpioThread = null;
 		ApplicationProperties ap = ApplicationProperties.getInstance(args[0]);
-		log.trace("Runinng on env '" + args[0] + "'. Calling:");
-		for(String number : ap.getContacts())
-		{
-			log.debug(number);
-		}
+		ap.dump();
 		
 		// Create the serial port communication class
 		MessageHandler mh = new MessageHandler(console, args[1], ap);
-		if (args[2].toUpperCase().compareTo("TEST") == 0)
+		switch(args[2].toUpperCase())
 		{
+		case "SMS":
 			console = new Console();
 		    // print program title/header
 	        console.title("<-- wediAlert -->", "monitoring input signals");
@@ -32,9 +30,17 @@ public class WediAlerter {
 	        // allow for user to exit program using CTRL-C
 	        console.promptForExit();
 			mh.testMsgsFromLineInput();
-		}
-		else
-		{
+			break;
+			
+		case "SYS":
+			new SystemParameterHandler();
+			break;
+			
+		case "PARMS":
+			ap.dump();
+			break;
+
+		case "GPIO":
 			try {
 				mh.openPort();
 			} 
@@ -48,5 +54,28 @@ public class WediAlerter {
 			gpioThread = new GpioHandler(mh, console, ap);
 			gpioThread.start();
 		}
+		
+		while (true){
+			try {
+				Thread.sleep(30000);
+		    } 
+			catch (InterruptedException ex){
+				log.trace("wait interrupted, going to shutdown");
+				break;
+		    }
+		}
+		
+		if (mh.isPortOpened())
+		{
+			mh.closePort();
+		}
+		
+		if ((gpioThread != null) && gpioThread.isAlive())
+		{
+			gpioThread.setShutdown(true);
+			gpioThread.join(GpioHandler.IO_WAIT_READ_TIME * 5);
+		}
+		
+		log.trace("Exiting app");
 	}
 }
