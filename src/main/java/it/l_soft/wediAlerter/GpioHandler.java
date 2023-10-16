@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import com.pi4j.io.gpio.GpioController;
 import com.pi4j.io.gpio.GpioFactory;
 import com.pi4j.io.gpio.GpioPinDigitalInput;
+import com.pi4j.io.gpio.GpioPinPwmOutput;
 import com.pi4j.io.gpio.Pin;
 import com.pi4j.io.gpio.PinPullResistance;
 import com.pi4j.io.gpio.RaspiPin;
@@ -20,25 +21,29 @@ public class GpioHandler extends Thread  {
 
 	public static final Pin ALERT_INPUT_PIN = RaspiPin.GPIO_24;
 	public static final Pin ALARM_INPUT_PIN = RaspiPin.GPIO_25;
-	private static final int IO_WAIT_READ_TIME = 500;
+	public static final Pin FAN_SPEED_PIN = RaspiPin.GPIO_26;
+	public static final int IO_WAIT_READ_TIME = 500;
 	private static final int WAIT_BEFORE_REPORT = 8;
+	private static final int TEMP_CHECK_INTERVAL = 5000;
+	private static final int TEMP_LOG_INTERVAL = 60000;
 
-	boolean shutdown = false;
-	Console console;
-	GpioPinDigitalInput pinAlarm;
-	GpioPinDigitalInput pinAlert;
-	int alertDownSince = 0;
-	int alarmDownSince = 0;
-	int alertUpSince = 0;
-	int alarmUpSince = 0;
-	MessageHandler mh;
-	SimpleDateFormat fmt = new SimpleDateFormat("yy/MM/dd HH:mm:ss");
-	ApplicationProperties ap;
+	private boolean shutdown = false;
+	private GpioPinDigitalInput pinAlarm;
+	private GpioPinDigitalInput pinAlert;
+	private GpioPinPwmOutput pinTemperature;
+	private int alertDownSince = 0;
+	private int alarmDownSince = 0;
+	private int alertUpSince = 0;
+	private int alarmUpSince = 0;
+	private long lastTempCheck = 0;
+	private long lastTempLog = 0;
+	private MessageHandler mh;
+	private SimpleDateFormat fmt = new SimpleDateFormat("yy/MM/dd HH:mm:ss");
+	private ApplicationProperties ap;
 	
 	public GpioHandler(MessageHandler mh, Console console, ApplicationProperties ap)  
 	{
 		this.mh = mh;
-		this.console = console;
 		this.ap = ap;		
 	}
 
@@ -68,12 +73,18 @@ public class GpioHandler extends Thread  {
         pinAlarm = gpio.provisionDigitalInputPin(ALARM_INPUT_PIN, "alarm", PinPullResistance.PULL_DOWN);
  
         pinAlert = gpio.provisionDigitalInputPin(ALERT_INPUT_PIN, "alert", PinPullResistance.PULL_DOWN);
+        pinTemperature = gpio.provisionPwmOutputPin(FAN_SPEED_PIN, "fan");
+        pinTemperature.setPwm(0);
+        
         System.out.println("Pin alarm set to '" + pinAlarm.getPin().getName() + "' current value " + pinAlarm.getState().getName());
         System.out.println("Pin alert set to '" + pinAlert.getPin().getName() + "' current value " + pinAlert.getState().getName());
+        System.out.println("Pin temperature set to '" + pinTemperature.getPin().getName());
 	}
 	
 	private void loop()
 	{
+		long millsNow = new Date().getTime();
+		
 		// Force the boolean value for testing purposes
 		boolean alert = pinAlert.isLow();
 		boolean alarm = pinAlarm.isLow();
@@ -147,7 +158,45 @@ public class GpioHandler extends Thread  {
 
 			}
 		}
+		if (millsNow - lastTempCheck > TEMP_CHECK_INTERVAL)
+		{
+			float cpuTemp = SystemParameterHandler.getCPUTemp();
+
+			int setPoint = 0;
+			if (cpuTemp > ap.getFanTempSetPoints()[3])
+			{
+				setPoint = 1024;
+			}
+			else if (cpuTemp > ap.getFanTempSetPoints()[2])
+			{
+				setPoint = 778;
+			}
+			else if (cpuTemp > ap.getFanTempSetPoints()[1])
+			{
+				setPoint = 512;
+
+			}
+			else if (cpuTemp > ap.getFanTempSetPoints()[0])
+			{
+				setPoint = 256;
+			}
+			pinTemperature.setPwm(setPoint);
+			lastTempCheck = millsNow;  
+
+			if (millsNow - lastTempLog > TEMP_LOG_INTERVAL)
+			{
+				log.debug("last CPU Temp read, was " + cpuTemp);
+				log.debug("Set PWM to " + setPoint);
+				lastTempLog = millsNow;  
+			}
+		}
 	}
+	
+	public void setShutdown(boolean value)
+	{
+		shutdown = value;
+	}
+
 	
 	public void run()
 	{
