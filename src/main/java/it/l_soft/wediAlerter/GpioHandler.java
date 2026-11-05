@@ -1,6 +1,9 @@
 package main.java.it.l_soft.wediAlerter;
 
+import java.io.File;
 import java.io.IOException;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
@@ -40,6 +43,7 @@ public class GpioHandler extends Thread  {
 	private MessageHandler mh;
 	private SimpleDateFormat fmt = new SimpleDateFormat("yy/MM/dd HH:mm:ss");
 	private ApplicationProperties ap;
+	private LocalDate lastHeartbeat = null;
 	
 	public GpioHandler(MessageHandler mh, Console console, ApplicationProperties ap)  
 	{
@@ -49,8 +53,12 @@ public class GpioHandler extends Thread  {
 
 	private void sendSMS(String msg)
 	{
+		sendSMS(msg, ap.getContacts());
+	}
 
-		for(String phoneNumber : ap.getContacts())
+	private void sendSMS(String msg, String[] contacts)
+	{
+		for(String phoneNumber : contacts)
 		{
 			try {
 				log.trace("Sending to '" + phoneNumber + "'");
@@ -182,6 +190,7 @@ public class GpioHandler extends Thread  {
 			}
 			pinTemperature.setPwm(setPoint);
 			lastTempCheck = millsNow;  
+			checkHeartbeat(cpuTemp);
 
 			if (millsNow - lastTempLog > TEMP_LOG_INTERVAL)
 			{
@@ -192,6 +201,54 @@ public class GpioHandler extends Thread  {
 		}
 	}
 	
+	private String heartbeatText(String what, float cpuTemp)
+	{
+		return what + " wediAlert: sistema attivo. Allarme " + (alarmUpSince > 0 ? "ATTIVO" : "normale") +
+			   ", guasto " + (alertUpSince > 0 ? "ATTIVO" : "normale") +
+			   ", CPU " + Math.round(cpuTemp) + "C. ore " + fmt.format(new Date());
+	}
+
+	// Called every TEMP_CHECK_INTERVAL: periodic test SMS, and on-demand test through the trigger file
+	private void checkHeartbeat(float cpuTemp)
+	{
+		String trigger = ap.getTestTriggerFile();
+		if (trigger != null)
+		{
+			File f = new File(trigger);
+			if (f.exists())
+			{
+				if (!f.delete())
+				{
+					log.error("Cannot delete test trigger file '" + trigger + "': test SMS not sent");
+				}
+				else
+				{
+					log.info("Test trigger file found: sending a test SMS");
+					sendSMS(heartbeatText("PROVA", cpuTemp), ap.getHeartbeatContacts());
+				}
+			}
+		}
+
+		if (ap.getHeartbeatDays().isEmpty())
+		{
+			return;
+		}
+		LocalDateTime now = LocalDateTime.now();
+		LocalDate today = now.toLocalDate();
+		if (today.equals(lastHeartbeat) || !ap.getHeartbeatDays().contains(today.getDayOfWeek()))
+		{
+			return;
+		}
+		LocalDateTime from = today.atTime(ap.getHeartbeatTime());
+		if (now.isBefore(from) || !now.isBefore(from.plusMinutes(ap.getHeartbeatWindowMinutes())))
+		{
+			return;
+		}
+		lastHeartbeat = today;
+		log.info("Sending the periodic test SMS");
+		sendSMS(heartbeatText("TEST PERIODICO", cpuTemp), ap.getHeartbeatContacts());
+	}
+
 	public void setShutdown(boolean value)
 	{
 		shutdown = value;

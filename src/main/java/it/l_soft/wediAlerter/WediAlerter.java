@@ -63,6 +63,13 @@ public class WediAlerter {
 				log.trace("wait interrupted, going to shutdown");
 				break;
 		    }
+			// If the monitoring thread died (e.g. a GPIO error), exit: systemd restarts the service.
+			// Staying alive without it would silently stop the fire-panel monitoring.
+			if ((gpioThread != null) && !gpioThread.isAlive())
+			{
+				log.error("GPIO monitoring thread is not running any more: exiting so that the service is restarted");
+				System.exit(2);
+			}
 		}
 		
 		if (mh.isPortOpened())
