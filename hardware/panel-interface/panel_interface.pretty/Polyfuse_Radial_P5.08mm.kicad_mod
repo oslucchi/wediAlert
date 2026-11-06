@@ -1,0 +1,13 @@
+(footprint "Polyfuse_Radial_P5.08mm"
+	(version 20241229)
+	(generator "wedi_gen")
+	(layer "F.Cu")
+	(descr "Radial resettable fuse, 5.08 mm pitch, body 7.4 x 3.1 mm")
+	(property "Reference" "F" (at 2.54 0 0) (layer "F.SilkS") (uuid "7876e68d-efc0-51a8-b9b1-87f29d53524c") (effects (font (size 0.8 0.8) (thickness 0.15))))
+	(property "Value" "PTC" (at 2.54 0 0) (layer "F.Fab") (uuid "04e6f305-ae1a-5323-bc31-8ab50ba7a028") (effects (font (size 1.0 1.0) (thickness 0.15))))
+	(fp_rect (start -1.16 -1.55) (end 6.24 1.55) (stroke (width 0.12) (type solid)) (fill no) (layer "F.SilkS") (uuid "4b6724e9-c817-581c-a944-97635009b03a"))
+	(fp_rect (start -1.16 -1.55) (end 6.24 1.55) (stroke (width 0.1) (type solid)) (fill no) (layer "F.Fab") (uuid "463f2cba-cf6b-54b8-95f1-99f52a51da54"))
+	(fp_rect (start -1.4 -1.8) (end 6.48 1.8) (stroke (width 0.05) (type solid)) (fill no) (layer "F.CrtYd") (uuid "75f5bea0-a664-5594-b5b9-6c78adcda576"))
+	(pad "1" thru_hole rect (at 0 0) (size 1.6 1.6) (drill 0.9) (layers "*.Cu" "*.Mask") (uuid "9b670c42-fdfd-5bb1-9f77-8c8ed73c263b"))
+	(pad "2" thru_hole circle (at 5.08 0) (size 1.6 1.6) (drill 0.9) (layers "*.Cu" "*.Mask") (uuid "bb70c8d0-a1a1-5db4-b56b-71bc4c3e6e36"))
+)
