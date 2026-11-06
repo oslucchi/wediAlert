@@ -1,0 +1,11 @@
+(footprint "SolderWire_Pads_1x02_P6mm"
+	(version 20241229)
+	(generator "wedi_gen")
+	(layer "F.Cu")
+	(descr "Two pads for 1 mm2 wires, 6 mm apart")
+	(property "Reference" "J" (at 3 -2.4 0) (layer "F.SilkS") (uuid "54f4c457-71f9-5616-b368-2958374a1d4a") (effects (font (size 0.8 0.8) (thickness 0.15))))
+	(property "Value" "5V" (at 3 2.4 0) (layer "F.Fab") (uuid "0f00bdb8-54e3-5802-86ab-1be935527863") (effects (font (size 1.0 1.0) (thickness 0.15))))
+	(fp_rect (start -2 -1.9) (end 8 1.9) (stroke (width 0.05) (type solid)) (fill no) (layer "F.CrtYd") (uuid "e1003350-b0fd-5566-9f17-4b7d30ce2c6a"))
+	(pad "1" thru_hole rect (at 0 0) (size 3.0 3.0) (drill 1.5) (layers "*.Cu" "*.Mask") (uuid "9b670c42-fdfd-5bb1-9f77-8c8ed73c263b"))
+	(pad "2" thru_hole circle (at 6 0) (size 3.0 3.0) (drill 1.5) (layers "*.Cu" "*.Mask") (uuid "89627443-f64e-5408-903a-7d83fa987c49"))
+)

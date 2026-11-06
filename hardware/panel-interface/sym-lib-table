@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "panel_interface")(type "KiCad")(uri "${KIPRJMOD}/panel_interface.kicad_sym")(options "")(descr "wediAlert panel interface"))
+)
