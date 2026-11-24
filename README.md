@@ -7,18 +7,22 @@ The panel interface board (relays, LEDs, 12 V to 5 V) is in `hardware/panel-inte
 
 ## Configuration
 
-The site file holds the phone numbers, so it is not in the repository. Create it from the example:
+Two files per site (`<env>` is `prod` on the Pi), in `src/main/resources`:
+
+| File | In git | Holds |
+|---|---|---|
+| `site.<env>.properties` | yes | Settings: fan control, the GPIO of each panel input, SMS texts, periodic test SMS. `site.example.properties` documents them |
+| `contacts.<env>.properties` | **no** (ignored) | The phone numbers: `contacts` and `heartbeat.contacts` |
+
+Create the contacts file from its template and put the real numbers in it:
 
 ```bash
-cp src/main/resources/site.example.properties site.prod.properties
+cp src/main/resources/contacts.example.properties src/main/resources/contacts.prod.properties
 ```
 
-Set `contacts`, then install it on the Pi as `/etc/wedialert/site.prod.properties`; the service passes
-`-Ddirectory.for.config=/etc/wedialert`. Without that option, wediAlert reads
-`site.<env>.properties` from the classpath (`src/main/resources`, ignored by git) for local runs.
-
-The example file documents every setting: contacts, fan control, the GPIO of each panel input, the SMS
-texts and the periodic test SMS.
+On the Pi both go in `/etc/wedialert/`; the service passes `-Ddirectory.for.config=/etc/wedialert`.
+Without that option, wediAlert reads them from the classpath, for local runs. Older installations with
+`contacts` still in the site file keep working, with a warning in the log.
 
 ## Build
 
@@ -26,4 +30,5 @@ texts and the periodic test SMS.
 mvn package
 ```
 
-Deploy `target/wediAlerter-*-jar-with-dependencies.jar` as `/opt/wedialert/wediAlert.jar`.
+Deploy `target/wediAlerter-*-jar-with-dependencies.jar` as `/opt/wedialert/wediAlert.jar`. The jar
+includes whatever is in `src/main/resources`, contacts files too: do not publish a jar built locally.

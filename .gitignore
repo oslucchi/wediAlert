@@ -1,5 +1,5 @@
 /target/
-# Site configurations hold the real phone numbers: keep them out of git.
-# Copy site.example.properties to site.<env>.properties (and to /etc/wedialert on the Pi).
-src/main/resources/site.*.properties
-!src/main/resources/site.example.properties
+# Phone numbers: keep them out of git. Copy contacts.example.properties to contacts.<env>.properties
+# (and to /etc/wedialert on the Pi).
+src/main/resources/contacts.*.properties
+!src/main/resources/contacts.example.properties

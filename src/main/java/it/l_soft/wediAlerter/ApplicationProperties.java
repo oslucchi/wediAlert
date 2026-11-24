@@ -61,33 +61,43 @@ public class ApplicationProperties {
 		defaultSystemPath = System.getProperty("directory.for.config");
 		log.debug("default conf dir is '" + defaultSystemPath + "'");
 		
-		Properties properties = new Properties();
-		// site.<env>.properties holds the phone numbers and is not in the repository: it is read from
-		// the -Ddirectory.for.config folder (/etc/wedialert on the Pi), else from the classpath for a
-		// local run. Copy site.example.properties to create it.
-		String siteProps = "site." + (env == null ? "prod" : env) + ".properties";
+		// Two files, both read from the -Ddirectory.for.config folder (/etc/wedialert on the Pi), else
+		// from the classpath for a local run:
+		//   site.<env>.properties      settings, kept in the repository
+		//   contacts.<env>.properties  the phone numbers, never in the repository (git ignores it):
+		//                              create it from contacts.example.properties
+		String name = env == null ? "prod" : env;
+		String siteProps = "site." + name + ".properties";
+		String contactsProps = "contacts." + name + ".properties";
 		boolean fromDir = defaultSystemPath != null && Files.isDirectory(Paths.get(defaultSystemPath));
-		String source = fromDir ? defaultSystemPath + File.separator + siteProps : "classpath /" + siteProps;
-		log.debug("Get conf from " + source);
-		try (InputStream in = fromDir ? new FileInputStream(new File(defaultSystemPath, siteProps))
-									  : ApplicationProperties.class.getResourceAsStream("/" + siteProps))
+		Properties properties = load(fromDir, siteProps);
+		if (properties == null)
 		{
-			if (in == null)
-			{
-				throw new IOException("not found");
-			}
-			properties.load(in);
-		}
-		catch(IOException e)
-		{
-			String msg = "Cannot read the site configuration " + source + " (" + e.getMessage() +
-						 "). Create it from site.example.properties, or set -Ddirectory.for.config";
+			String msg = "Cannot read the site configuration " + describe(fromDir, siteProps) +
+						 ". Create it from site.example.properties, or set -Ddirectory.for.config";
 			log.error(msg);
-			throw new IllegalStateException(msg, e);
+			throw new IllegalStateException(msg);
+		}
+		Properties contactsFile = load(fromDir, contactsProps);
+		if (contactsFile != null)
+		{
+			if (properties.containsKey("contacts"))
+			{
+				log.warn(siteProps + " also has contacts: they are ignored, " + contactsProps + " is used. " +
+						 "Remove them from " + siteProps);
+			}
+			properties.putAll(contactsFile);
+		}
+		else if (properties.containsKey("contacts"))
+		{
+			// older installations: the numbers are still in the site file
+			log.warn("No " + describe(fromDir, contactsProps) + ": using the contacts in " + siteProps +
+					 ". Move them to " + contactsProps + " (see contacts.example.properties)");
 		}
 		if (properties.getProperty("contacts", "").trim().isEmpty())
 		{
-			String msg = "No contacts in " + source + ": nobody would get the SMS";
+			String msg = "No contacts in " + describe(fromDir, contactsProps) + ": nobody would get the SMS. " +
+						 "Create it from contacts.example.properties";
 			log.error(msg);
 			throw new IllegalStateException(msg);
 		}
@@ -192,6 +202,39 @@ public class ApplicationProperties {
 	public String getFireText()
 	{
 		return fireText;
+	}
+
+	/** Reads a properties file from the config folder or the classpath; null if it is not there */
+	private Properties load(boolean fromDir, String fileName)
+	{
+		log.debug("Get conf from " + describe(fromDir, fileName));
+		try (InputStream in = fromDir ? openIfExists(new File(defaultSystemPath, fileName))
+									  : ApplicationProperties.class.getResourceAsStream("/" + fileName))
+		{
+			if (in == null)
+			{
+				return null;
+			}
+			Properties p = new Properties();
+			p.load(in);
+			return p;
+		}
+		catch(IOException e)
+		{
+			String msg = "Cannot read " + describe(fromDir, fileName) + ": " + e.getMessage();
+			log.error(msg);
+			throw new IllegalStateException(msg, e);
+		}
+	}
+
+	private static InputStream openIfExists(File file) throws IOException
+	{
+		return file.isFile() ? new FileInputStream(file) : null;
+	}
+
+	private String describe(boolean fromDir, String fileName)
+	{
+		return fromDir ? defaultSystemPath + File.separator + fileName : "classpath /" + fileName;
 	}
 
 	/*
