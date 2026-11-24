@@ -9,7 +9,9 @@ Open `panel-interface.kicad_pro` in KiCad 10.
 | Normal | closed | energized | 1 | normal |
 | Alarm, panel power loss, cut cable | open | released | 0 | active |
 
-No software change is needed: the pins and the logic match `GpioHandler`.
+Line 1 (J1 pins 1-2) is GPIO19 and line 2 (J1 pins 3-4) is GPIO26. Which one is the panel's fault output and
+which its fire alarm is set by `fault.gpio` and `fire.gpio` in `site.prod.properties`, so the wiring can
+stay as it is.
 
 ## Check before ordering
 
@@ -24,7 +26,7 @@ No software change is needed: the pins and the logic match `GpioHandler`.
 
 | Ref | Value | Notes |
 |---|---|---|
-| K1, K2 | FP2 D3009 | Reuse the existing relays. 5 V coil, 178 ohm, polarized |
+| K1, K2 | FP2 D3009 or TQ2-5V | Reuse the existing relays or buy TQ2-5V. 5 V coil, 178 ohm, polarized |
 | R1, R2 | 270 ohm, 0.6 W | Coil series resistor, about 0.2 W dissipated |
 | D1, D2 | 1N4148 | Coil flyback. Band to the coil + side, as on the silk |
 | F1, F2 | Bourns MF-R010 | Resettable, 100 mA hold, 5.08 mm pitch |
@@ -39,6 +41,14 @@ No software change is needed: the pins and the logic match `GpioHandler`.
 | J2 | 2-way 5.08 mm MSTBA-style header | 12 V in, with its plug |
 | J3 | Solder pads | 5 V wires, 1 mm2 |
 | J4 | 1x4 2.54 mm pin header | Dupont wires to the HAT |
+
+`order-list.csv` lists manufacturer part numbers for distributor BOM upload. It leaves out the module,
+which is reused.
+
+The FP2 D3009 is no longer available from the main distributors. The list uses the Panasonic **TQ2-5V**
+instead. Going by the datasheets it fits this footprint unchanged: same 14 x 9 mm body, 2.54 / 7.62 mm
+grid, 178 ohm coil with + on pin 1 and - on pin 10, and contacts 8/9/7 and 3/2/4. Do not buy the TQ2SA
+(surface mount) or TQ2-L (latching) variants, or the TX2, which does not fit.
 
 The LED footprints can hold the LED directly, or take wires to LEDs on the box wall as today.
 
@@ -70,8 +80,8 @@ Keep `wedialert` disabled until the last step.
 
 1. **Before soldering each relay**, with a meter: 178 ohm or so between pins 1 and 10, and continuity
    between 8 and 9. Apply 5 V, + on pin 1 and - on pin 10: it should click, with continuity between
-   8 and 7. The datasheet is a 2012 TE edition and these relays are older Alcatel parts, so this
-   confirms the pinout before it matters.
+   8 and 7. This confirms the pinout before it matters: the datasheets are newer than the old Alcatel
+   parts, and a TQ2-5V has not yet been tried on this board.
 2. **Module alone, Pi disconnected:** apply 12 V and set the trimmer to 5.1 V at J3.
 3. **Connect J4 and J3 to the Pi.** Power up with nothing on J1. Both inputs must read 0, even after
    forcing a pull-up, because R9/R10 win:
