@@ -34,6 +34,12 @@ public class ApplicationProperties {
 	// fan.gpio: BCM number of the fan PWM pin (see site.example.properties); -1 = no fan
 	private int fanGpio = 18;
 	private int fanWiringPiPin = 1;
+	// panel inputs, BCM numbers (see site.example.properties): fault and fire alarm outputs of the panel
+	private int faultGpio = 26;
+	private int fireGpio = 19;
+	// SMS texts for the two panel outputs; " - RIENTRATO" is appended when the condition clears
+	private String faultText = "GUASTO IMPIANTO ANTINCENDIO";
+	private String fireText = "ALLARME INCENDIO";
 	private String testTriggerFile = null;
 	
 	private static ApplicationProperties instance = null;
@@ -55,47 +61,142 @@ public class ApplicationProperties {
 		defaultSystemPath = System.getProperty("directory.for.config");
 		log.debug("default conf dir is '" + defaultSystemPath + "'");
 		
-		Path confFilePath = Paths.get(defaultSystemPath);
-		log.debug("Path from command line '" + confFilePath.toString() + "' (isDir " +
-				  Files.isDirectory(confFilePath) + ")");
 		Properties properties = new Properties();
-    	try 
-    	{
-    		String siteProps = "site." + (env == null ? "prod" : env) + ".properties";
-    		InputStream in;        	
-    		if (Files.isDirectory(confFilePath))
-    		{
-    			log.debug("Get conf from system file '" + defaultSystemPath + File.separator + siteProps + "'");
-    			in = new FileInputStream(new File(defaultSystemPath + File.separator + siteProps));        	
-    		}
-    		else
-    		{
-        		log.debug("Get conf from resources at '" + ApplicationProperties.class.getResource(siteProps).getPath() + "'");
-        		in = ApplicationProperties.class.getResourceAsStream(File.separator + siteProps);        	
-    		}
-
-    		properties.load(in);
-	    	in.close();
+		// site.<env>.properties holds the phone numbers and is not in the repository: it is read from
+		// the -Ddirectory.for.config folder (/etc/wedialert on the Pi), else from the classpath for a
+		// local run. Copy site.example.properties to create it.
+		String siteProps = "site." + (env == null ? "prod" : env) + ".properties";
+		boolean fromDir = defaultSystemPath != null && Files.isDirectory(Paths.get(defaultSystemPath));
+		String source = fromDir ? defaultSystemPath + File.separator + siteProps : "classpath /" + siteProps;
+		log.debug("Get conf from " + source);
+		try (InputStream in = fromDir ? new FileInputStream(new File(defaultSystemPath, siteProps))
+									  : ApplicationProperties.class.getResourceAsStream("/" + siteProps))
+		{
+			if (in == null)
+			{
+				throw new IOException("not found");
+			}
+			properties.load(in);
 		}
-    	catch(IOException e) 
-    	{
-			log.error("Exception " + e.getMessage(), e);
-    		return;
+		catch(IOException e)
+		{
+			String msg = "Cannot read the site configuration " + source + " (" + e.getMessage() +
+						 "). Create it from site.example.properties, or set -Ddirectory.for.config";
+			log.error(msg);
+			throw new IllegalStateException(msg, e);
+		}
+		if (properties.getProperty("contacts", "").trim().isEmpty())
+		{
+			String msg = "No contacts in " + source + ": nobody would get the SMS";
+			log.error(msg);
+			throw new IllegalStateException(msg);
 		}
 		contacts = properties.getProperty("contacts").split(";");
 		int i = 0;
-		for(String point : properties.getProperty("fanTempSetPoints").split(","))
+		for(String point : properties.getProperty("fanTempSetPoints", "46.5, 47.5, 49, 52").split(","))
 		{
 			fanTempSetPoints[i++] = Float.valueOf(point);
 		}
 		loadHeartbeat(properties);
 		benchPullUp = Boolean.parseBoolean(properties.getProperty("gpio.benchPullUp", "false").trim());
 		loadFanPin(properties);
+		faultText = smsText(properties, "sms.fault.text", faultText);
+		fireText = smsText(properties, "sms.fire.text", fireText);
+		loadInputPins(properties);
+		log.info("SMS texts: fault (GPIO" + faultGpio + ") '" + faultText + "', fire (GPIO" + fireGpio + ") '" + fireText + "'");
+	}
+
+	// BCM -> wiringPi numbering for the 40-pin header (index = BCM number, -1 = not on the header)
+	private static final int[] BCM_TO_WIRINGPI = {
+			30, 31,  8,  9,  7, 21, 22, 11, 10, 13, 12, 14, 26, 23, 15, 16,
+			27,  0,  1, 24, 28, 29,  3,  4,  5,  6, 25,  2 };
+	// pins the inputs must not use: I2C ID EEPROM (0, 1) and the modem UART (14, 15)
+	private static final Set<Integer> RESERVED_GPIO = Set.of(0, 1, 14, 15);
+
+	/** wiringPi number of a BCM pin, -1 if it is not on the header */
+	public static int toWiringPi(int bcm)
+	{
+		return bcm >= 0 && bcm < BCM_TO_WIRINGPI.length ? BCM_TO_WIRINGPI[bcm] : -1;
+	}
+
+	/*
+	 * fault.gpio=26   BCM number of the input wired to the panel's fault output
+	 * fire.gpio=19    BCM number of the input wired to the panel's fire alarm output
+	 * Both read 1 while the panel loop is closed (normal) and 0 when it opens. An invalid setting
+	 * (unknown pin, reserved pin, same pin twice or the fan pin) is logged and the defaults are kept.
+	 */
+	private void loadInputPins(Properties properties)
+	{
+		int fault = parseGpio(properties, "fault.gpio", faultGpio);
+		int fire = parseGpio(properties, "fire.gpio", fireGpio);
+		if (fault == fire || fault == fanGpio || fire == fanGpio)
+		{
+			log.error("fault.gpio=" + fault + ", fire.gpio=" + fire + ", fan.gpio=" + fanGpio +
+					  ": the inputs must be two different pins, not the fan pin. Using fault GPIO" +
+					  faultGpio + ", fire GPIO" + fireGpio);
+			return;
+		}
+		faultGpio = fault;
+		fireGpio = fire;
+	}
+
+	private int parseGpio(Properties properties, String key, int fallback)
+	{
+		String value = properties.getProperty(key, "").trim();
+		if (value.isEmpty())
+		{
+			return fallback;
+		}
+		try {
+			int bcm = Integer.parseInt(value);
+			if (toWiringPi(bcm) >= 0 && !RESERVED_GPIO.contains(bcm))
+			{
+				return bcm;
+			}
+		}
+		catch(NumberFormatException e) {
+			// reported below
+		}
+		log.error(key + "=" + value + " is not a usable GPIO (2-27, not 14 or 15): using GPIO" + fallback);
+		return fallback;
+	}
+
+	/** BCM number of the fault input */
+	public int getFaultGpio()
+	{
+		return faultGpio;
+	}
+
+	/** BCM number of the fire alarm input */
+	public int getFireGpio()
+	{
+		return fireGpio;
+	}
+
+	/*
+	 * sms.fault.text   sent when the fault input (fault.gpio) opens
+	 * sms.fire.text    sent when the fire alarm input (fire.gpio) opens
+	 * " - RIENTRATO" is appended when the condition clears; the time is added to both.
+	 */
+	private String smsText(Properties properties, String key, String fallback)
+	{
+		String text = properties.getProperty(key, "").trim();
+		return text.isEmpty() ? fallback : text;
+	}
+
+	public String getFaultText()
+	{
+		return faultText;
+	}
+
+	public String getFireText()
+	{
+		return fireText;
 	}
 
 	/*
 	 * fan.gpio=18   BCM number of the pin driving the fan, as in "gpio -g". Only the hardware PWM
-	 *               pins work: 12, 13 or 18 (19 is the alert input). none = no fan control.
+	 *               pins work: 12, 13 or 18. none = no fan control.
 	 */
 	private void loadFanPin(Properties properties)
 	{

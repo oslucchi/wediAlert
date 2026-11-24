@@ -16,9 +16,10 @@ import com.pi4j.wiringpi.Gpio;
 public class GpioHandler extends Thread  {
 	final Logger log = LoggerFactory.getLogger(this.getClass()); 
 
-	// wiringPi numbering (BCM 19 and 26; header pins 35 and 37). The fan pin is fan.gpio in the site properties
-	public static final int ALERT_INPUT_PIN = 24;
-	public static final int ALARM_INPUT_PIN = 25;
+	// wiringPi numbers of the inputs, from fault.gpio and fire.gpio in the site properties:
+	// "alert" is the panel's fault output, "alarm" its fire alarm output
+	private int alertInputPin;
+	private int alarmInputPin;
 	public static final int IO_WAIT_READ_TIME = 500;
 	private static final int WAIT_BEFORE_REPORT = 8;
 	private static final int TEMP_CHECK_INTERVAL = 5000;
@@ -77,23 +78,25 @@ public class GpioHandler extends Thread  {
 
 		// Pull-down: a cut wire reads as an alarm (fail-safe). The bench setting pulls up instead, so
 		// that a Pi with nothing wired reads "normal"; it must never be on when wired to the panel.
+		alertInputPin = ApplicationProperties.toWiringPi(ap.getFaultGpio());
+		alarmInputPin = ApplicationProperties.toWiringPi(ap.getFireGpio());
 		int pull = ap.isBenchPullUp() ? Gpio.PUD_UP : Gpio.PUD_DOWN;
 		if (ap.isBenchPullUp())
 		{
 			log.error("BENCH MODE (gpio.benchPullUp=true): a cut wire is NOT detected. Never use it on the panel");
 		}
-		Gpio.pinMode(ALARM_INPUT_PIN, Gpio.INPUT);
-		Gpio.pullUpDnControl(ALARM_INPUT_PIN, pull);
-		Gpio.pinMode(ALERT_INPUT_PIN, Gpio.INPUT);
-		Gpio.pullUpDnControl(ALERT_INPUT_PIN, pull);
+		Gpio.pinMode(alarmInputPin, Gpio.INPUT);
+		Gpio.pullUpDnControl(alarmInputPin, pull);
+		Gpio.pinMode(alertInputPin, Gpio.INPUT);
+		Gpio.pullUpDnControl(alertInputPin, pull);
 		if (ap.getFanWiringPiPin() >= 0)
 		{
 			Gpio.pinMode(ap.getFanWiringPiPin(), Gpio.PWM_OUTPUT);
 			Gpio.pwmWrite(ap.getFanWiringPiPin(), 0);
 		}
 
-		log.info("GPIO ready. alarm input " + Gpio.digitalRead(ALARM_INPUT_PIN) +
-				 ", alert input " + Gpio.digitalRead(ALERT_INPUT_PIN));
+		log.info("GPIO ready. fire input GPIO" + ap.getFireGpio() + " = " + Gpio.digitalRead(alarmInputPin) +
+				 ", fault input GPIO" + ap.getFaultGpio() + " = " + Gpio.digitalRead(alertInputPin));
 	}
 
 	private void loop()
@@ -101,8 +104,8 @@ public class GpioHandler extends Thread  {
 		long millsNow = new Date().getTime();
 		
 		// Force the boolean value for testing purposes
-		boolean alert = Gpio.digitalRead(ALERT_INPUT_PIN) == 0;
-		boolean alarm = Gpio.digitalRead(ALARM_INPUT_PIN) == 0;
+		boolean alert = Gpio.digitalRead(alertInputPin) == 0;
+		boolean alarm = Gpio.digitalRead(alarmInputPin) == 0;
 		
 		if (alert)
 		{
@@ -119,7 +122,7 @@ public class GpioHandler extends Thread  {
 				log.debug("Alert active since more than "  + 
 							alertUpSince / 1000  +
 							" seconds. Sending messages");
-				sendSMS("ALLERTA GUASTO IMPIANTO ANTINCENDIO. ore " + fmt.format(new Date()));
+				sendSMS(ap.getFaultText() + ". ore " + fmt.format(new Date()));
 			}
 		}
 		else
@@ -132,7 +135,7 @@ public class GpioHandler extends Thread  {
 					System.out.println("** Alert is now DOWN **");
 					// send alert reset msg
 					log.trace("Reset alert to normal");
-					sendSMS("RIENTRATA ALLERTA GUASTO IMPIANTO ANTINCENDIO. ore " + fmt.format(new Date()));
+					sendSMS(ap.getFaultText() + " - RIENTRATO. ore " + fmt.format(new Date()));
 					alertUpSince = 0;
 				}
 
@@ -154,7 +157,7 @@ public class GpioHandler extends Thread  {
 				log.debug("Alarm active since more than "  + 
 							alarmUpSince / 1000 +
 							" seconds. Sending messages");
-				sendSMS("ALLARME IMPIANTO ANTINCENDIO. ore " + fmt.format(new Date()));
+				sendSMS(ap.getFireText() + ". ore " + fmt.format(new Date()));
 			}
 		}
 		else
@@ -167,7 +170,7 @@ public class GpioHandler extends Thread  {
 					System.out.println("** Alarm is now DOWN **");
 					// send alert reset msg
 					log.trace("Reset alarm to normal");
-					sendSMS("RIENTRATO ALLARME IMPIANTO ANTINCENDIO. ore " + fmt.format(new Date()));
+					sendSMS(ap.getFireText() + " - RIENTRATO. ore " + fmt.format(new Date()));
 					alarmUpSince = 0;
 				}
 
