@@ -29,6 +29,11 @@ public class ApplicationProperties {
 	private LocalTime heartbeatTime = LocalTime.of(10, 0);
 	private int heartbeatWindowMinutes = 60;
 	private String heartbeatContacts[] = null;
+	// bench test only: see gpio.benchPullUp in site.example.properties
+	private boolean benchPullUp = false;
+	// fan.gpio: BCM number of the fan PWM pin (see site.example.properties); -1 = no fan
+	private int fanGpio = 18;
+	private int fanWiringPiPin = 1;
 	private String testTriggerFile = null;
 	
 	private static ApplicationProperties instance = null;
@@ -84,6 +89,55 @@ public class ApplicationProperties {
 			fanTempSetPoints[i++] = Float.valueOf(point);
 		}
 		loadHeartbeat(properties);
+		benchPullUp = Boolean.parseBoolean(properties.getProperty("gpio.benchPullUp", "false").trim());
+		loadFanPin(properties);
+	}
+
+	/*
+	 * fan.gpio=18   BCM number of the pin driving the fan, as in "gpio -g". Only the hardware PWM
+	 *               pins work: 12, 13 or 18 (19 is the alert input). none = no fan control.
+	 */
+	private void loadFanPin(Properties properties)
+	{
+		String value = properties.getProperty("fan.gpio", "18").trim();
+		if (value.equalsIgnoreCase("none"))
+		{
+			fanGpio = -1;
+			fanWiringPiPin = -1;
+			log.info("fan control off (fan.gpio=none)");
+			return;
+		}
+		// BCM -> wiringPi numbering, PWM capable pins only
+		switch(value)
+		{
+		case "12": fanWiringPiPin = 26; break;
+		case "13": fanWiringPiPin = 23; break;
+		case "18": fanWiringPiPin = 1; break;
+		default:
+			log.error("fan.gpio=" + value + " is not a free hardware PWM pin (12, 13 or 18): fan control off");
+			fanGpio = -1;
+			fanWiringPiPin = -1;
+			return;
+		}
+		fanGpio = Integer.parseInt(value);
+		log.info("fan on GPIO" + fanGpio + " (wiringPi " + fanWiringPiPin + ")");
+	}
+
+	/** BCM number of the fan pin, -1 when there is no fan control */
+	public int getFanGpio()
+	{
+		return fanGpio;
+	}
+
+	/** wiringPi number of the fan pin, -1 when there is no fan control */
+	public int getFanWiringPiPin()
+	{
+		return fanWiringPiPin;
+	}
+
+	public boolean isBenchPullUp()
+	{
+		return benchPullUp;
 	}
 
 	/*

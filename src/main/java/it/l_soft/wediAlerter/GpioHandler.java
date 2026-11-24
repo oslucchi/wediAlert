@@ -10,30 +10,21 @@ import java.util.Date;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.pi4j.io.gpio.GpioController;
-import com.pi4j.io.gpio.GpioFactory;
-import com.pi4j.io.gpio.GpioPinDigitalInput;
-import com.pi4j.io.gpio.GpioPinPwmOutput;
-import com.pi4j.io.gpio.Pin;
-import com.pi4j.io.gpio.PinPullResistance;
-import com.pi4j.io.gpio.RaspiPin;
 import com.pi4j.util.Console;
+import com.pi4j.wiringpi.Gpio;
 
 public class GpioHandler extends Thread  {
 	final Logger log = LoggerFactory.getLogger(this.getClass()); 
 
-	public static final Pin ALERT_INPUT_PIN = RaspiPin.GPIO_24;
-	public static final Pin ALARM_INPUT_PIN = RaspiPin.GPIO_25;
-	public static final Pin FAN_SPEED_PIN = RaspiPin.GPIO_26;
+	// wiringPi numbering (BCM 19 and 26; header pins 35 and 37). The fan pin is fan.gpio in the site properties
+	public static final int ALERT_INPUT_PIN = 24;
+	public static final int ALARM_INPUT_PIN = 25;
 	public static final int IO_WAIT_READ_TIME = 500;
 	private static final int WAIT_BEFORE_REPORT = 8;
 	private static final int TEMP_CHECK_INTERVAL = 5000;
 	private static final int TEMP_LOG_INTERVAL = 60000;
 
 	private boolean shutdown = false;
-	private GpioPinDigitalInput pinAlarm;
-	private GpioPinDigitalInput pinAlert;
-	private GpioPinPwmOutput pinTemperature;
 	private int alertDownSince = 0;
 	private int alarmDownSince = 0;
 	private int alertUpSince = 0;
@@ -72,30 +63,46 @@ public class GpioHandler extends Thread  {
 		}
 	}
 	
+	/*
+	 * WiringPi directly, not pi4j's GpioFactory: provisioning a pin there exports it through
+	 * /sys/class/gpio using the pin number, which fails on current kernels ("Unable to open GPIO
+	 * direction interface"), while WiringPi itself reads and drives the pins correctly.
+	 */
 	private void setUp()
-	{	
-        final GpioController gpio = GpioFactory.getInstance();
-//        gpio.setMode(GPIO.BCM), null);
-        
-        // provision gpio pin 19 & 26 as an input pin 
-        pinAlarm = gpio.provisionDigitalInputPin(ALARM_INPUT_PIN, "alarm", PinPullResistance.PULL_DOWN);
- 
-        pinAlert = gpio.provisionDigitalInputPin(ALERT_INPUT_PIN, "alert", PinPullResistance.PULL_DOWN);
-        pinTemperature = gpio.provisionPwmOutputPin(FAN_SPEED_PIN, "fan");
-        pinTemperature.setPwm(0);
-        
-        System.out.println("Pin alarm set to '" + pinAlarm.getPin().getName() + "' current value " + pinAlarm.getState().getName());
-        System.out.println("Pin alert set to '" + pinAlert.getPin().getName() + "' current value " + pinAlert.getState().getName());
-        System.out.println("Pin temperature set to '" + pinTemperature.getPin().getName());
+	{
+		if (Gpio.wiringPiSetup() == -1)
+		{
+			throw new IllegalStateException("WiringPi setup failed");
+		}
+
+		// Pull-down: a cut wire reads as an alarm (fail-safe). The bench setting pulls up instead, so
+		// that a Pi with nothing wired reads "normal"; it must never be on when wired to the panel.
+		int pull = ap.isBenchPullUp() ? Gpio.PUD_UP : Gpio.PUD_DOWN;
+		if (ap.isBenchPullUp())
+		{
+			log.error("BENCH MODE (gpio.benchPullUp=true): a cut wire is NOT detected. Never use it on the panel");
+		}
+		Gpio.pinMode(ALARM_INPUT_PIN, Gpio.INPUT);
+		Gpio.pullUpDnControl(ALARM_INPUT_PIN, pull);
+		Gpio.pinMode(ALERT_INPUT_PIN, Gpio.INPUT);
+		Gpio.pullUpDnControl(ALERT_INPUT_PIN, pull);
+		if (ap.getFanWiringPiPin() >= 0)
+		{
+			Gpio.pinMode(ap.getFanWiringPiPin(), Gpio.PWM_OUTPUT);
+			Gpio.pwmWrite(ap.getFanWiringPiPin(), 0);
+		}
+
+		log.info("GPIO ready. alarm input " + Gpio.digitalRead(ALARM_INPUT_PIN) +
+				 ", alert input " + Gpio.digitalRead(ALERT_INPUT_PIN));
 	}
-	
+
 	private void loop()
 	{
 		long millsNow = new Date().getTime();
 		
 		// Force the boolean value for testing purposes
-		boolean alert = pinAlert.isLow();
-		boolean alarm = pinAlarm.isLow();
+		boolean alert = Gpio.digitalRead(ALERT_INPUT_PIN) == 0;
+		boolean alarm = Gpio.digitalRead(ALARM_INPUT_PIN) == 0;
 		
 		if (alert)
 		{
@@ -188,7 +195,10 @@ public class GpioHandler extends Thread  {
 			{
 				setPoint = 256;
 			}
-			pinTemperature.setPwm(setPoint);
+			if (ap.getFanWiringPiPin() >= 0)
+			{
+				Gpio.pwmWrite(ap.getFanWiringPiPin(), setPoint);
+			}
 			lastTempCheck = millsNow;  
 			checkHeartbeat(cpuTemp);
 
